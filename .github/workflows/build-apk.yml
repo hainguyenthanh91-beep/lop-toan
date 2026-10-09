@@ -25,12 +25,17 @@ jobs:
           flutter-version: '3.29.3'
           cache: true
 
-      - name: Giai nen ma nguon
-        run: |
-          if [ -f src.tar.xz ]; then tar xJf src.tar.xz; fi
-          if [ -f src.zip ]; then unzip -o src.zip; fi
-          ls -R lib tools keys | head -40
-          python3 -m pip install --break-system-packages -q pillow || sudo apt-get install -y python3-pil
+      - name: Chuan bi
+        run: python3 -m pip install --break-system-packages -q pillow || sudo apt-get install -y python3-pil
+
+      - name: Luu dem Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-flutter-3.29.3-${{ hashFiles('pubspec.yaml') }}
+          restore-keys: gradle-${{ runner.os }}-flutter-3.29.3-
 
       - name: Tao khung Android
         run: |

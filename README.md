@@ -10,7 +10,7 @@ App Android chạy **offline**, dữ liệu lưu ngay trong điện thoại (SQL
 | **Lớp học** | 8–9 lớp, mỗi lớp có 4 tab: Học sinh · Điểm danh · Bài tập · Thống kê (xếp loại, biểu đồ TB lớp, bảng xếp hạng). Nhập danh sách HS bằng cách dán từ Excel/Zalo. Xuất bảng điểm ra Excel (CSV) |
 | **Học sinh** | Tìm kiếm không dấu, lọc theo lớp, sắp theo điểm / chuyên cần. Mỗi em có **trang riêng**: ĐTB có hệ số, xếp hạng lớp, % chuyên cần, % nộp bài, **biểu đồ điểm** (so với TB lớp), **biểu đồ TB theo tháng**, lịch sử vắng, bảng điểm + nhận xét, học phí, nút gọi / Zalo / SMS phụ huynh |
 | **Phiếu báo cáo** | Từ trang học sinh → tạo **ảnh phiếu báo kết quả** (tháng này / tháng trước / cả khóa) kèm nhận xét → gửi thẳng qua Zalo |
-| **Học phí** | Chọn tháng, tick đã đóng, tổng đã thu / chưa thu, nút nhắn nhắc học phí |
+| **Học phí** | Tính THEO BUỔI: chỉ buổi có mặt / đi muộn mới tính tiền (giá 1 buổi đặt theo lớp). Chọn tháng, xem từng em học mấy buổi, ngày nào, thành tiền; tick đã đóng (chốt số tiền), nhấn giữ để sửa tay, nhắn nhắc học phí kèm danh sách buổi |
 | **Cài đặt** | Tên giáo viên, tên trung tâm, **sao lưu / khôi phục** (file .json), tạo dữ liệu mẫu để xem thử |
 
 Điểm danh: mặc định cả lớp **có mặt**, chạm vào em nào thì chuyển thành **vắng**, nhấn giữ để chọn *đi muộn / vắng có phép* và ghi chú.
