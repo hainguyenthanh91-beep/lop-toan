@@ -30,6 +30,7 @@ jobs:
           if [ -f src.tar.xz ]; then tar xJf src.tar.xz; fi
           if [ -f src.zip ]; then unzip -o src.zip; fi
           ls -R lib tools keys | head -40
+          python3 -m pip install --break-system-packages -q pillow || sudo apt-get install -y python3-pil
 
       - name: Tao khung Android
         run: |
