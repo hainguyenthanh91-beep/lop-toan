@@ -73,11 +73,38 @@ class SchoolClass {
         'color': color,
       };
 
+  /// Giờ học riêng từng ngày (DateTime.weekday -> 'HH:mm').
+  /// Lưu trong cột time dạng "3=17:30;7=14:00". Dữ liệu cũ chỉ có một giờ
+  /// (VD "17:30") thì áp dụng chung cho mọi ngày.
+  Map<int, String> get dayTimes {
+    final m = <int, String>{};
+    if (time.contains('=')) {
+      for (final part in time.split(';')) {
+        final kv = part.split('=');
+        if (kv.length != 2) continue;
+        final d = int.tryParse(kv[0].trim());
+        if (d != null && kv[1].trim().isNotEmpty) m[d] = kv[1].trim();
+      }
+    } else if (time.trim().isNotEmpty) {
+      for (final d in days) {
+        m[d] = time.trim();
+      }
+    }
+    return m;
+  }
+
+  String timeFor(int weekday) => dayTimes[weekday] ?? '';
+
+  static String encodeTimes(Map<int, String> m) {
+    final keys = m.keys.where((d) => m[d]!.isNotEmpty).toList()..sort();
+    return keys.map((d) => '$d=${m[d]}').join(';');
+  }
+
   String get scheduleText {
     final sorted = List<int>.from(days)..sort();
-    final d = sorted.map(weekdayShort).join(' · ');
-    if (d.isEmpty) return time.isEmpty ? 'Chưa đặt lịch' : time;
-    return time.isEmpty ? d : '$d  |  $time';
+    if (sorted.isEmpty) return 'Chưa đặt lịch';
+    final t = dayTimes;
+    return sorted.map((d) => (t[d] ?? '').isEmpty ? weekdayShort(d) : '${weekdayShort(d)} ${t[d]}').join('  ·  ');
   }
 }
 
@@ -483,6 +510,14 @@ class AppDb {
       final sid = ex.isNotEmpty
           ? _i(ex.first['id'])
           : await txn.insert('sessions', {'class_id': classId, 'date': date, 'note': ''});
+      if (data.isEmpty) {
+        await txn.delete('sessions', where: 'id = ?', whereArgs: [sid]);
+        return;
+      }
+      // Bỏ những em đã bị gỡ khỏi buổi này
+      await txn.delete('attendance',
+          where: 'session_id = ? AND student_id NOT IN (${List.filled(data.length, '?').join(',')})',
+          whereArgs: [sid, ...data.keys]);
       for (final e in data.entries) {
         await txn.insert(
           'attendance',

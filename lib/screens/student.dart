@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../db.dart';
 import '../utils.dart';
 import '../widgets.dart';
+import 'attendance.dart';
 import 'grading.dart';
 import 'report_card.dart';
 import 'student_edit.dart';
@@ -57,6 +58,9 @@ class _StudentScreenState extends State<StudentScreen> with AutoReload<StudentSc
   Future<void> _menu(String v) async {
     final st = s!;
     switch (v) {
+      case 'extra':
+        await _extraSession(st);
+        break;
       case 'edit':
         await showStudentEditor(context, student: st);
         break;
@@ -73,6 +77,22 @@ class _StudentScreenState extends State<StudentScreen> with AutoReload<StudentSc
     }
   }
 
+  /// Điểm danh buổi học thêm / học bù cho riêng em này vào ngày bất kỳ.
+  Future<void> _extraSession(Student st) async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 60)),
+      helpText: 'Ngày học thêm của ${st.name}',
+    );
+    if (d == null || !mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AttendanceScreen(classId: st.classId, date: ymd(d), onlyStudents: {st.id!})),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = s;
@@ -84,6 +104,8 @@ class _StudentScreenState extends State<StudentScreen> with AutoReload<StudentSc
             PopupMenuButton<String>(
               onSelected: _menu,
               itemBuilder: (_) => [
+                const PopupMenuItem(
+                    value: 'extra', child: ListTile(leading: Icon(Icons.event_repeat), title: Text('Điểm danh học thêm'))),
                 const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit), title: Text('Sửa / chuyển lớp'))),
                 PopupMenuItem(
                   value: 'active',
@@ -140,7 +162,14 @@ class _StudentScreenState extends State<StudentScreen> with AutoReload<StudentSc
                   child: SizedBox(height: 180, child: MonthlyBarChart(rows: scores)),
                 ),
                 const SizedBox(height: 8),
-                SectionHeader(title: 'Chuyên cần', trailing: Text('${att.length} buổi', style: const TextStyle(color: kMuted))),
+                SectionHeader(
+                  title: 'Chuyên cần · ${att.length} buổi',
+                  trailing: TextButton.icon(
+                    onPressed: () => _extraSession(st),
+                    icon: const Icon(Icons.event_repeat, size: 18),
+                    label: const Text('Học thêm'),
+                  ),
+                ),
                 _attendanceCard(),
                 const SizedBox(height: 8),
                 SectionHeader(

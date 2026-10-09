@@ -209,7 +209,7 @@ class _SettingsScreenState extends State<SettingsScreen> with AutoReload<Setting
             ),
             const SizedBox(height: 20),
             const Center(
-              child: Text('Lớp Toán · phiên bản 1.1', style: TextStyle(color: kMuted, fontSize: 12)),
+              child: Text('Lớp Toán · phiên bản 1.2', style: TextStyle(color: kMuted, fontSize: 12)),
             ),
           ],
         ),

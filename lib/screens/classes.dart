@@ -128,7 +128,8 @@ class _ClassEditorState extends State<_ClassEditor> {
   late final TextEditingController fee =
       TextEditingController(text: (widget.cls?.fee ?? 0) == 0 ? '' : '${widget.cls!.fee}');
   late Set<int> days = {...?widget.cls?.days};
-  late String time = widget.cls?.time ?? '';
+  late Map<int, String> times = {...?widget.cls?.dayTimes};
+  late String lastTime = times.values.isNotEmpty ? times.values.first : '17:30';
   late int color = widget.cls?.color ?? 0;
   bool saving = false;
 
@@ -140,14 +141,33 @@ class _ClassEditorState extends State<_ClassEditor> {
     super.dispose();
   }
 
-  Future<void> _pickTime() async {
+  Future<void> _pickTime(int day) async {
+    final cur = times[day] ?? lastTime;
     var initial = const TimeOfDay(hour: 17, minute: 30);
-    if (time.contains(':')) {
-      final p = time.split(':');
+    if (cur.contains(':')) {
+      final p = cur.split(':');
       initial = TimeOfDay(hour: int.tryParse(p[0]) ?? 17, minute: int.tryParse(p[1]) ?? 30);
     }
-    final t = await showTimePicker(context: context, initialTime: initial);
-    if (t != null) setState(() => time = '${two(t.hour)}:${two(t.minute)}');
+    final t = await showTimePicker(context: context, initialTime: initial, helpText: 'Giờ học ${weekdayLong(day)}');
+    if (t != null) {
+      setState(() {
+        times[day] = '${two(t.hour)}:${two(t.minute)}';
+        lastTime = times[day]!;
+      });
+    }
+  }
+
+  void _toggleDay(int w, bool on) {
+    setState(() {
+      if (on) {
+        days.add(w);
+        // ngày mới thêm lấy tạm giờ của ngày gần nhất đã đặt, sửa lại được
+        if ((times[w] ?? '').isEmpty && times.values.isNotEmpty) times[w] = lastTime;
+      } else {
+        days.remove(w);
+        times.remove(w);
+      }
+    });
   }
 
   Future<void> _save() async {
@@ -161,7 +181,7 @@ class _ClassEditorState extends State<_ClassEditor> {
       ..name = name.text.trim()
       ..grade = grade.text.trim()
       ..days = days.toList()
-      ..time = time
+      ..time = SchoolClass.encodeTimes({for (final d in days) d: times[d] ?? ''})
       ..fee = parseMoney(fee.text)
       ..color = color;
     await AppDb.instance.saveClass(c);
@@ -199,28 +219,56 @@ class _ClassEditorState extends State<_ClassEditor> {
           FilterChip(
             label: Text(weekdayShort(w)),
             selected: days.contains(w),
-            onSelected: (v) => setState(() => v ? days.add(w) : days.remove(w)),
+            onSelected: (v) => _toggleDay(w, v),
           ),
       ]),
-      const SizedBox(height: 16),
-      Row(children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-            onPressed: _pickTime,
-            icon: const Icon(Icons.schedule),
-            label: Text(time.isEmpty ? 'Chọn giờ học' : 'Giờ học: $time'),
+      if (days.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        const Text('Giờ học từng ngày', style: TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        for (final d in (days.toList()..sort()))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => _pickTime(d),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: kLine),
+                  ),
+                  child: Row(children: [
+                    SizedBox(
+                        width: 90,
+                        child: Text(weekdayLong(d), style: const TextStyle(fontWeight: FontWeight.w600))),
+                    const Icon(Icons.schedule, size: 18, color: kNavy),
+                    const SizedBox(width: 6),
+                    Text(
+                      (times[d] ?? '').isEmpty ? 'Chọn giờ' : times[d]!,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: (times[d] ?? '').isEmpty ? kMuted : kNavy,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Icon(Icons.edit, size: 16, color: kMuted),
+                  ]),
+                ),
+              ),
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: TextField(
-            controller: fee,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Học phí 1 buổi', hintText: '80000', suffixText: 'đ'),
-          ),
-        ),
-      ]),
+      ],
+      const SizedBox(height: 12),
+      TextField(
+        controller: fee,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'Học phí 1 buổi', hintText: '80000', suffixText: 'đ'),
+      ),
       const SizedBox(height: 16),
       const Text('Màu lớp', style: TextStyle(fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),

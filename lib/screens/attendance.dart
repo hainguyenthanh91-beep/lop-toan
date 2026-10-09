@@ -7,7 +7,10 @@ import '../widgets.dart';
 class AttendanceScreen extends StatefulWidget {
   final int classId;
   final String date;
-  const AttendanceScreen({super.key, required this.classId, required this.date});
+
+  /// Buổi học thêm / học bù: chỉ điểm danh các em này (không phải cả lớp).
+  final Set<int>? onlyStudents;
+  const AttendanceScreen({super.key, required this.classId, required this.date, this.onlyStudents});
   @override
   State<AttendanceScreen> createState() => _AttendanceScreenState();
 }
@@ -16,6 +19,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   late String date = widget.date;
   SchoolClass? cls;
   List<Student> students = [];
+  List<Student> allStudents = [];
+  Set<int>? only;
   Map<int, int> status = {};
   Map<int, String> notes = {};
   bool loading = true;
@@ -26,6 +31,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void initState() {
     super.initState();
+    only = widget.onlyStudents;
     _load();
   }
 
@@ -39,10 +45,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     setState(() {
       cls = c;
       existed = ex;
-      students = all.where((s) => s.active || data.containsKey(s.id)).toList();
+      allStudents = all.where((s) => s.active || data.containsKey(s.id)).toList();
+      if (ex) {
+        // buổi đã có: hiện đúng các em đã được điểm danh (+ em cần học thêm nếu có)
+        students = allStudents.where((s) => data.containsKey(s.id) || (only?.contains(s.id) ?? false)).toList();
+      } else if (only != null) {
+        students = allStudents.where((s) => only!.contains(s.id)).toList();
+      } else {
+        students = allStudents.where((s) => s.active).toList();
+      }
       status = {for (final s in students) s.id!: data[s.id]?.$1 ?? attPresent};
       notes = {for (final s in students) s.id!: data[s.id]?.$2 ?? ''};
-      dirty = !ex && students.isNotEmpty;
+      dirty = students.any((s) => !data.containsKey(s.id));
       loading = false;
     });
   }
@@ -76,7 +90,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _detail(Student s) async {
     final noteCtrl = TextEditingController(text: notes[s.id!] ?? '');
     var cur = status[s.id!] ?? attPresent;
-    final res = await showAppSheet<bool>(
+    final res = await showAppSheet<Object>(
       context,
       StatefulBuilder(builder: (ctx, setS) {
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -113,6 +127,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
           const SizedBox(height: 14),
           Row(children: [
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () => Navigator.pop(ctx, 'remove'),
+                icon: const Icon(Icons.person_remove_outlined, color: kRed, size: 20),
+                label: const Text('Bỏ em này khỏi buổi', style: TextStyle(color: kRed)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          Row(children: [
             if (s.parentPhone.isNotEmpty) ...[
               Expanded(
                 child: OutlinedButton.icon(
@@ -139,6 +163,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ]);
       }),
     );
+    if (res == 'remove' && mounted) {
+      setState(() {
+        students.removeWhere((x) => x.id == s.id);
+        status.remove(s.id);
+        notes.remove(s.id);
+        dirty = true;
+      });
+      return;
+    }
     if (res == true && mounted) {
       setState(() {
         status[s.id!] = cur;
@@ -148,11 +181,93 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
+  /// Chọn nhiều học sinh trong danh sách.
+  Future<Set<int>?> _chooseStudents(List<Student> options, Set<int> initial, String title) {
+    final sel = {...initial};
+    return showAppSheet<Set<int>>(
+      context,
+      StatefulBuilder(builder: (ctx, setS) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SheetTitle(title),
+          Row(children: [
+            Text('Đã chọn ${sel.length}/${options.length}', style: const TextStyle(color: kMuted)),
+            const Spacer(),
+            TextButton(
+              onPressed: () => setS(() {
+                if (sel.length == options.length) {
+                  sel.clear();
+                } else {
+                  sel.addAll(options.map((e) => e.id!));
+                }
+              }),
+              child: Text(sel.length == options.length ? 'Bỏ chọn hết' : 'Chọn hết'),
+            ),
+          ]),
+          for (final st in options)
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: sel.contains(st.id),
+              onChanged: (v) => setS(() => v == true ? sel.add(st.id!) : sel.remove(st.id)),
+              title: Text(st.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          const SizedBox(height: 10),
+          FilledButton(
+            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+            onPressed: () => Navigator.pop(ctx, sel),
+            child: const Text('Xong'),
+          ),
+        ]);
+      }),
+    );
+  }
+
+  /// Thêm học sinh (học bù / học thêm) vào buổi này.
+  Future<void> _addStudents() async {
+    final shown = students.map((e) => e.id).toSet();
+    final options = allStudents.where((x) => x.active && !shown.contains(x.id)).toList();
+    if (options.isEmpty) {
+      showToast(context, 'Tất cả học sinh của lớp đã có trong buổi này');
+      return;
+    }
+    final picked = await _chooseStudents(options, {}, 'Thêm học sinh vào buổi');
+    if (picked == null || picked.isEmpty || !mounted) return;
+    setState(() {
+      for (final st in options.where((x) => picked.contains(x.id))) {
+        students.add(st);
+        status[st.id!] = attPresent;
+        notes[st.id!] = '';
+      }
+      students.sort((a, b) => a.sortKey.compareTo(b.sortKey));
+      dirty = true;
+    });
+  }
+
+  /// Buổi mới: chỉ điểm danh vài em (học thêm / học bù).
+  Future<void> _pickSubset() async {
+    final picked = await _chooseStudents(
+        students, students.map((e) => e.id!).toSet(), 'Chỉ điểm danh các em đi học buổi này');
+    if (picked == null || !mounted) return;
+    setState(() {
+      students = students.where((x) => picked.contains(x.id)).toList();
+      status.removeWhere((k, _) => !picked.contains(k));
+      notes.removeWhere((k, _) => !picked.contains(k));
+      dirty = true;
+    });
+  }
+
+  bool get _isPartial => students.length < allStudents.where((s) => s.active).length;
+
   Future<void> _save() async {
     setState(() => saving = true);
     final data = <int, (int, String)>{
       for (final s in students) s.id!: (status[s.id!] ?? attPresent, notes[s.id!] ?? ''),
     };
+    if (data.isEmpty && !existed) {
+      showToast(context, 'Chưa có em nào trong buổi này');
+      setState(() => saving = false);
+      return;
+    }
     await AppDb.instance.saveAttendance(widget.classId, date, data);
     if (!mounted) return;
     setState(() {
@@ -201,14 +316,25 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ),
           ]),
           actions: [
+            IconButton(onPressed: _addStudents, icon: const Icon(Icons.person_add_alt_1), tooltip: 'Thêm học sinh vào buổi'),
             IconButton(onPressed: _changeDate, icon: const Icon(Icons.edit_calendar), tooltip: 'Đổi ngày'),
           ],
         ),
         body: loading
             ? const Center(child: CircularProgressIndicator())
             : students.isEmpty
-                ? const Center(
-                    child: EmptyState(icon: Icons.people_outline, title: 'Lớp chưa có học sinh'),
+                ? Center(
+                    child: EmptyState(
+                      icon: Icons.people_outline,
+                      title: 'Buổi này chưa có học sinh',
+                      action: allStudents.isEmpty
+                          ? null
+                          : FilledButton.icon(
+                              onPressed: _addStudents,
+                              icon: const Icon(Icons.person_add_alt_1),
+                              label: const Text('Thêm học sinh'),
+                            ),
+                    ),
                   )
                 : Column(children: [
                     Container(
@@ -235,13 +361,38 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         ),
                       ]),
                     ),
-                    if (!existed)
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(20, 0, 20, 6),
-                        child: Text(
-                          'Mặc định cả lớp có mặt. Chạm vào em nào vắng; nhấn giữ hoặc bấm nhãn để chọn chi tiết.',
-                          style: TextStyle(color: kMuted, fontSize: 12.5),
+                    if (_isPartial)
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: kAmber.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: kAmber.withValues(alpha: 0.35)),
                         ),
+                        child: Row(children: [
+                          const Icon(Icons.event_repeat, color: kAmber, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text('Buổi học thêm / học bù · ${students.length} em',
+                                style: const TextStyle(color: kAmber, fontWeight: FontWeight.w700)),
+                          ),
+                          TextButton(onPressed: _addStudents, child: const Text('Thêm em')),
+                        ]),
+                      ),
+                    if (!existed)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 12, 6),
+                        child: Row(children: [
+                          const Expanded(
+                            child: Text(
+                              'Mặc định có mặt. Chạm vào em nào vắng; nhấn giữ để chọn chi tiết hoặc bỏ khỏi buổi.',
+                              style: TextStyle(color: kMuted, fontSize: 12.5),
+                            ),
+                          ),
+                          if (!_isPartial)
+                            TextButton(onPressed: _pickSubset, child: const Text('Chỉ vài em')),
+                        ]),
                       ),
                     Expanded(
                       child: ListView.builder(

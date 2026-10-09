@@ -62,7 +62,7 @@ class _TodayScreenState extends State<TodayScreen> with AutoReload<TodayScreen> 
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final scheduled = classes.where((c) => c.days.contains(now.weekday)).toList()
-      ..sort((a, b) => a.time.compareTo(b.time));
+      ..sort((a, b) => a.timeFor(now.weekday).compareTo(b.timeFor(now.weekday)));
     final extra = classes.where((c) => !c.days.contains(now.weekday) && todaySessions.containsKey(c.id)).toList();
     final todayList = [...scheduled, ...extra];
 
@@ -197,7 +197,7 @@ class _TodayScreenState extends State<TodayScreen> with AutoReload<TodayScreen> 
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(c.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 2),
-            Text('${c.time.isEmpty ? 'Chưa đặt giờ' : c.time}  ·  ${c.studentCount} học sinh',
+            Text('${c.timeFor(DateTime.now().weekday).isEmpty ? 'Chưa đặt giờ' : c.timeFor(DateTime.now().weekday)}  ·  ${c.studentCount} học sinh',
                 style: const TextStyle(color: kMuted, fontSize: 13)),
             if (s != null) ...[
               const SizedBox(height: 4),
