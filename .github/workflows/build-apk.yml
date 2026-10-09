@@ -1,0 +1,54 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.29.3'
+          cache: true
+
+      - name: Tao khung Android
+        run: |
+          flutter create --platforms=android --org vn.thayhai --project-name lop_toan .
+          rm -rf test
+          python3 tools/patch_android.py
+
+      - name: Cai thu vien
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Doi ten file
+        run: cp build/app/outputs/flutter-apk/app-release.apk LopToan-v${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LopToan-apk
+          path: LopToan-v${{ github.run_number }}.apk
+
+      - name: Dang ban tai ve (Releases)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Lớp Toán – bản ${{ github.run_number }}
+          body: Tải file .apk bên dưới về điện thoại rồi bấm để cài.
+          files: LopToan-v${{ github.run_number }}.apk
