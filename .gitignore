@@ -1,0 +1,16 @@
+# Thư mục do Flutter tự sinh khi build
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.idea/
+*.iml
+android/
+ios/
+web/
+linux/
+macos/
+windows/
+test/
+pubspec.lock
