@@ -98,6 +98,17 @@ String fmtMoney(int v) {
   return '${v < 0 ? '-' : ''}${b.toString()}đ';
 }
 
+/// Đọc điểm học sinh. Chấp nhận "8,5" và "8.5". Gõ tắt: với thang 10,
+/// gõ "85" (không có dấu) sẽ hiểu là 8,5 – tiện khi bàn phím không có dấu phẩy.
+double? parseScoreFor(String s, double maxScore) {
+  final t = s.trim().replaceAll(' ', '');
+  final v = parseScore(t);
+  if (v == null) return null;
+  final noSep = !t.contains('.') && !t.contains(',');
+  if (noSep && v > maxScore && v <= maxScore * 10 && v == v.roundToDouble()) return v / 10;
+  return v;
+}
+
 double? parseScore(String s) {
   final t = s.trim().replaceAll(',', '.');
   if (t.isEmpty) return null;

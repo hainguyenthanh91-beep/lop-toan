@@ -101,7 +101,7 @@ class _AssignmentEditorState extends State<_AssignmentEditor> {
           width: 110,
           child: TextField(
             controller: maxScore,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
             decoration: const InputDecoration(labelText: 'Thang điểm'),
           ),
         ),
@@ -207,7 +207,7 @@ class _GradingScreenState extends State<GradingScreen> {
     final vals = <double>[];
     for (final s in students) {
       if (missing.contains(s.id)) continue;
-      final v = parseScore(ctrls[s.id!]!.text);
+      final v = parseScoreFor(ctrls[s.id!]!.text, a!.maxScore);
       if (v != null) vals.add(v / a!.maxScore * 10);
     }
     final done = vals.length + missing.length;
@@ -233,7 +233,7 @@ class _GradingScreenState extends State<GradingScreen> {
     final entries = <ScoreEntry>[];
     for (final s in students) {
       final txt = ctrls[s.id!]!.text;
-      final v = parseScore(txt);
+      final v = parseScoreFor(txt, mx);
       if (txt.trim().isNotEmpty && v == null) {
         showToast(context, 'Điểm của ${s.name} không hợp lệ');
         focus[s.id!]!.requestFocus();
@@ -353,7 +353,7 @@ class _GradingScreenState extends State<GradingScreen> {
     final s = students[i];
     final id = s.id!;
     final isMissing = missing.contains(id);
-    final v = parseScore(ctrls[id]!.text);
+    final v = parseScoreFor(ctrls[id]!.text, a!.maxScore);
     final v10 = v == null ? null : v / a!.maxScore * 10;
     final hasComment = comments.containsKey(id);
     return Padding(
@@ -408,7 +408,7 @@ class _GradingScreenState extends State<GradingScreen> {
                     controller: ctrls[id],
                     focusNode: focus[id],
                     textAlign: TextAlign.center,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                     textInputAction: i == students.length - 1 ? TextInputAction.done : TextInputAction.next,
                     onSubmitted: (_) {
                       for (var j = i + 1; j < students.length; j++) {
@@ -421,7 +421,7 @@ class _GradingScreenState extends State<GradingScreen> {
                     },
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: scoreColor(v10)),
                     decoration: InputDecoration(
-                      hintText: '–',
+                      hintText: '–', helperText: null,
                       contentPadding: const EdgeInsets.symmetric(vertical: 10),
                       fillColor: v10 == null ? Colors.white : scoreColor(v10).withValues(alpha: 0.07),
                     ),
