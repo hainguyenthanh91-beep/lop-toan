@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../db.dart';
 import '../utils.dart';
 import '../widgets.dart';
-import 'attendance.dart';
+import 'attendance_calendar.dart';
 import 'grading.dart';
 import 'report_card.dart';
 import 'student_edit.dart';
@@ -77,21 +77,8 @@ class _StudentScreenState extends State<StudentScreen> with AutoReload<StudentSc
     }
   }
 
-  /// Điểm danh buổi học thêm / học bù cho riêng em này vào ngày bất kỳ.
-  Future<void> _extraSession(Student st) async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 60)),
-      helpText: 'Ngày học thêm của ${st.name}',
-    );
-    if (d == null || !mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => AttendanceScreen(classId: st.classId, date: ymd(d), onlyStudents: {st.id!})),
-    );
-  }
+  /// Lịch điểm danh riêng của em: chạm ngày nào là tích ngày đó.
+  Future<void> _extraSession(Student st) => showAttendanceCalendar(context, st);
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +92,7 @@ class _StudentScreenState extends State<StudentScreen> with AutoReload<StudentSc
               onSelected: _menu,
               itemBuilder: (_) => [
                 const PopupMenuItem(
-                    value: 'extra', child: ListTile(leading: Icon(Icons.event_repeat), title: Text('Điểm danh học thêm'))),
+                    value: 'extra', child: ListTile(leading: Icon(Icons.event_repeat), title: Text('Lịch điểm danh'))),
                 const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit), title: Text('Sửa / chuyển lớp'))),
                 PopupMenuItem(
                   value: 'active',
@@ -166,8 +153,8 @@ class _StudentScreenState extends State<StudentScreen> with AutoReload<StudentSc
                   title: 'Chuyên cần · ${att.length} buổi',
                   trailing: TextButton.icon(
                     onPressed: () => _extraSession(st),
-                    icon: const Icon(Icons.event_repeat, size: 18),
-                    label: const Text('Học thêm'),
+                    icon: const Icon(Icons.calendar_month, size: 18),
+                    label: const Text('Lịch điểm danh'),
                   ),
                 ),
                 _attendanceCard(),

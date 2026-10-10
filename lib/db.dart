@@ -535,6 +535,31 @@ class AppDb {
     notifyDataChanged();
   }
 
+  /// Điểm danh nhanh 1 em vào 1 ngày (status = null để bỏ điểm danh ngày đó).
+  /// Buổi học gắn với lớp hiện tại của em; buổi trống sẽ tự xoá.
+  Future<void> setStudentDay(int classId, int studentId, String date, int? status) async {
+    final d = await db;
+    await d.transaction((txn) async {
+      final ex = await txn.query('sessions', columns: ['id'], where: 'class_id = ? AND date = ?', whereArgs: [classId, date]);
+      if (status == null) {
+        if (ex.isEmpty) return;
+        final sid = _i(ex.first['id']);
+        await txn.delete('attendance', where: 'session_id = ? AND student_id = ?', whereArgs: [sid, studentId]);
+        final left = Sqflite.firstIntValue(
+                await txn.rawQuery('SELECT COUNT(*) FROM attendance WHERE session_id = ?', [sid])) ??
+            0;
+        if (left == 0) await txn.delete('sessions', where: 'id = ?', whereArgs: [sid]);
+        return;
+      }
+      final sid = ex.isNotEmpty
+          ? _i(ex.first['id'])
+          : await txn.insert('sessions', {'class_id': classId, 'date': date, 'note': ''});
+      await txn.insert('attendance', {'session_id': sid, 'student_id': studentId, 'status': status, 'note': ''},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+    notifyDataChanged();
+  }
+
   Future<List<AttendanceRecord>> studentAttendance(int studentId) async {
     final d = await db;
     final rows = await d.rawQuery(
