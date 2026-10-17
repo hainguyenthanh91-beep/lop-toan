@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'utils.dart';
@@ -365,17 +367,81 @@ class AppDb {
 
   static const _tables = ['classes', 'students', 'sessions', 'attendance', 'assignments', 'scores', 'fees', 'settings'];
 
+  /// Thứ tự đẩy lên đám mây (bảng cha trước bảng con).
+  static const syncTables = ['classes', 'students', 'sessions', 'assignments', 'attendance', 'scores', 'fees', 'settings'];
+
+  /// Khoá chính từng bảng – dùng ghép thành "key" khi đồng bộ.
+  static const pkCols = <String, List<String>>{
+    'classes': ['id'],
+    'students': ['id'],
+    'sessions': ['id'],
+    'assignments': ['id'],
+    'attendance': ['session_id', 'student_id'],
+    'scores': ['assignment_id', 'student_id'],
+    'fees': ['student_id', 'month'],
+    'settings': ['key'],
+  };
+
+  static String _keyExpr(String t, String ref) =>
+      pkCols[t]!.map((c) => "CAST($ref.$c AS TEXT)").join(" || '_' || ");
+
+  /// Bảng phụ cho đồng bộ + trigger tự ghi lại mọi thay đổi vào _outbox.
+  static List<String> get _syncSchema {
+    const now = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)";
+    final out = <String>[
+      'CREATE TABLE IF NOT EXISTS _outbox(tbl TEXT NOT NULL, key TEXT NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY(tbl, key))',
+      'CREATE TABLE IF NOT EXISTS _sync_mute(x INTEGER)',
+      'CREATE TABLE IF NOT EXISTS _sync_meta(k TEXT PRIMARY KEY, v TEXT)',
+    ];
+    for (final t in syncTables) {
+      final skip = t == 'settings' ? " AND REF.key <> 'last_backup'" : '';
+      for (final ev in ['INSERT', 'UPDATE', 'DELETE']) {
+        final ref = ev == 'DELETE' ? 'OLD' : 'NEW';
+        out.add('CREATE TRIGGER IF NOT EXISTS trg_${t}_${ev.toLowerCase()} AFTER $ev ON $t '
+            'WHEN NOT EXISTS (SELECT 1 FROM _sync_mute)${skip.replaceAll('REF', ref)} BEGIN '
+            "INSERT OR REPLACE INTO _outbox(tbl, key, ts) VALUES ('$t', ${_keyExpr(t, ref)}, $now); END");
+      }
+    }
+    return out;
+  }
+
+  /// Mã số không trùng giữa các máy (thời gian ms × 1000 + ngẫu nhiên).
+  static final _rnd = Random();
+  static int _lastId = 0;
+  static int newId() {
+    var v = DateTime.now().millisecondsSinceEpoch * 1000 + _rnd.nextInt(1000);
+    if (v <= _lastId) v = _lastId + 1;
+    _lastId = v;
+    return v;
+  }
+
   Future<Database> _open() async {
-    final dir = await getDatabasesPath();
+    final dir = Platform.isWindows ? (await getApplicationSupportDirectory()).path : await getDatabasesPath();
+    await Directory(dir).create(recursive: true);
     return openDatabase(
       p.join(dir, 'lop_toan.db'),
-      version: 1,
+      version: 2,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
       onCreate: (db, version) async {
         for (final sql in _schema) {
           await db.execute(sql);
+        }
+        for (final sql in _syncSchema) {
+          await db.execute(sql);
+        }
+      },
+      onUpgrade: (db, oldV, newV) async {
+        if (oldV < 2) {
+          for (final sql in _syncSchema) {
+            await db.execute(sql);
+          }
+          // Dữ liệu cũ: đưa hết vào hàng chờ để lần đồng bộ đầu đẩy lên đám mây.
+          for (final t in syncTables) {
+            await db.execute("INSERT OR REPLACE INTO _outbox(tbl, key, ts) SELECT '$t', ${_keyExpr(t, t)}, 1 FROM $t"
+                "${t == 'settings' ? " WHERE key <> 'last_backup'" : ''}");
+          }
         }
       },
     );
@@ -401,7 +467,7 @@ class AppDb {
     final d = await db;
     int id;
     if (c.id == null) {
-      id = await d.insert('classes', c.toMap());
+      id = await d.insert('classes', {'id': newId(), ...c.toMap()});
     } else {
       await d.update('classes', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
       id = c.id!;
@@ -448,7 +514,7 @@ class AppDb {
     final d = await db;
     int id;
     if (s.id == null) {
-      id = await d.insert('students', s.toMap());
+      id = await d.insert('students', {'id': newId(), ...s.toMap()});
     } else {
       await d.update('students', s.toMap(), where: 'id = ?', whereArgs: [s.id]);
       id = s.id!;
@@ -467,7 +533,7 @@ class AppDb {
     final d = await db;
     await d.transaction((txn) async {
       for (final s in list) {
-        await txn.insert('students', s.toMap());
+        await txn.insert('students', {'id': newId(), ...s.toMap()});
       }
     });
     notifyDataChanged();
@@ -509,7 +575,7 @@ class AppDb {
       final ex = await txn.query('sessions', columns: ['id'], where: 'class_id = ? AND date = ?', whereArgs: [classId, date]);
       final sid = ex.isNotEmpty
           ? _i(ex.first['id'])
-          : await txn.insert('sessions', {'class_id': classId, 'date': date, 'note': ''});
+          : await txn.insert('sessions', {'id': newId(), 'class_id': classId, 'date': date, 'note': ''});
       if (data.isEmpty) {
         await txn.delete('sessions', where: 'id = ?', whereArgs: [sid]);
         return;
@@ -553,7 +619,7 @@ class AppDb {
       }
       final sid = ex.isNotEmpty
           ? _i(ex.first['id'])
-          : await txn.insert('sessions', {'class_id': classId, 'date': date, 'note': ''});
+          : await txn.insert('sessions', {'id': newId(), 'class_id': classId, 'date': date, 'note': ''});
       await txn.insert('attendance', {'session_id': sid, 'student_id': studentId, 'status': status, 'note': ''},
           conflictAlgorithm: ConflictAlgorithm.replace);
     });
@@ -596,7 +662,7 @@ class AppDb {
     final d = await db;
     int id;
     if (a.id == null) {
-      id = await d.insert('assignments', a.toMap());
+      id = await d.insert('assignments', {'id': newId(), ...a.toMap()});
     } else {
       await d.update('assignments', a.toMap(), where: 'id = ?', whereArgs: [a.id]);
       id = a.id!;
@@ -922,19 +988,20 @@ class AppDb {
     final d = await db;
     await d.transaction((txn) async {
       for (final c in demoClasses) {
-        final cid = await txn.insert('classes', c.toMap());
+        final cid = await txn.insert('classes', {'id': newId(), ...c.toMap()});
         final ids = <int>[];
         final ability = <int, double>{};
         for (var k = 0; k < 12; k++) {
           final name = '${ho[rnd.nextInt(ho.length)]} ${dem[rnd.nextInt(dem.length)]} ${ten[rnd.nextInt(ten.length)]}';
-          final sid = await txn.insert(
-              'students',
-              Student(
+          final sid = await txn.insert('students', {
+            'id': newId(),
+            ...Student(
                 classId: cid,
                 name: name,
                 parentPhone: '09${(10000000 + rnd.nextInt(89999999))}',
                 createdAt: ymd(start),
-              ).toMap());
+              ).toMap(),
+          });
           ids.add(sid);
           ability[sid] = 4.5 + rnd.nextDouble() * 5;
         }
@@ -942,7 +1009,7 @@ class AppDb {
         for (var day = start; !day.isAfter(now); day = day.add(const Duration(days: 1))) {
           if (!c.days.contains(day.weekday)) continue;
           final date = ymd(day);
-          final sesId = await txn.insert('sessions', {'class_id': cid, 'date': date, 'note': ''});
+          final sesId = await txn.insert('sessions', {'id': newId(), 'class_id': cid, 'date': date, 'note': ''});
           for (final sid in ids) {
             final r = rnd.nextDouble();
             final st = r < 0.86 ? 0 : (r < 0.92 ? 1 : (r < 0.96 ? 2 : 3));
@@ -953,6 +1020,7 @@ class AppDb {
             week++;
             final type = week % 2 == 0 ? 'Kiểm tra 15 phút' : 'BTVN';
             final aid = await txn.insert('assignments', {
+              'id': newId(),
               'class_id': cid,
               'title': type == 'BTVN' ? 'BTVN tuần $week' : 'Kiểm tra 15\' số ${week ~/ 2}',
               'date': date,

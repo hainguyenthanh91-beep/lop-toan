@@ -97,7 +97,7 @@ class _ReportCardScreenState extends State<ReportCardScreen> {
       final safe = fold(s!.name).replaceAll(RegExp(r'[^a-z0-9]+'), '_');
       final f = File('${dir.path}/PhieuBaoCao_${safe}_${DateTime.now().millisecondsSinceEpoch}.png');
       await f.writeAsBytes(bytes!.buffer.asUint8List());
-      await Share.shareXFiles([XFile(f.path, mimeType: 'image/png')], text: 'Phiếu báo kết quả học tập – ${s!.name}');
+      await shareOrSave(context, f, 'image/png', text: 'Phiếu báo kết quả học tập – ${s!.name}');
     } catch (e) {
       if (mounted) showToast(context, 'Không xuất được ảnh: $e');
     } finally {

@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../db.dart';
+import '../sync.dart';
 import '../utils.dart';
 import '../widgets.dart';
 
@@ -53,8 +54,7 @@ class _SettingsScreenState extends State<SettingsScreen> with AutoReload<Setting
       final name = 'SaoLuu_LopToan_${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}.json';
       final f = File('${dir.path}/$name');
       await f.writeAsString(json);
-      await Share.shareXFiles([XFile(f.path, mimeType: 'application/json')],
-          subject: 'Sao lưu dữ liệu Lớp Toán', text: 'Bản sao lưu dữ liệu lớp học ngày ${two(now.day)}/${two(now.month)}/${now.year}');
+      await shareOrSave(context, f, 'application/json', text: 'Bản sao lưu dữ liệu lớp học ngày ${two(now.day)}/${two(now.month)}/${now.year}');
       await AppDb.instance
           .setSetting('last_backup', '${two(now.hour)}:${two(now.minute)} ${two(now.day)}/${two(now.month)}/${now.year}');
     } catch (e) {
@@ -152,6 +152,9 @@ class _SettingsScreenState extends State<SettingsScreen> with AutoReload<Setting
               ]),
             ),
             const SizedBox(height: 12),
+            const SectionHeader(title: 'Đồng bộ điện thoại ↔ máy tính'),
+            const SyncPanel(),
+            const SizedBox(height: 12),
             const SectionHeader(title: 'Sao lưu dữ liệu'),
             PaperCard(
               color: const Color(0xFFFFF8E7),
@@ -209,11 +212,218 @@ class _SettingsScreenState extends State<SettingsScreen> with AutoReload<Setting
             ),
             const SizedBox(height: 20),
             const Center(
-              child: Text('Lớp Toán · phiên bản 1.3', style: TextStyle(color: kMuted, fontSize: 12)),
+              child: Text('Lớp Toán · phiên bản 2.0', style: TextStyle(color: kMuted, fontSize: 12)),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ===========================================================================
+// Đồng bộ đám mây
+// ===========================================================================
+class SyncPanel extends StatefulWidget {
+  const SyncPanel({super.key});
+  @override
+  State<SyncPanel> createState() => _SyncPanelState();
+}
+
+class _SyncPanelState extends State<SyncPanel> {
+  final sync = SyncService.instance;
+  final email = TextEditingController();
+  final pass = TextEditingController();
+  bool busy = false;
+  int pending = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    sync.state.addListener(_refresh);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    sync.state.removeListener(_refresh);
+    email.dispose();
+    pass.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    final n = await sync.pendingCount();
+    if (mounted) setState(() => pending = n);
+  }
+
+  Future<void> _auth(bool signUp) async {
+    if (email.text.trim().isEmpty || pass.text.length < 6) {
+      showToast(context, 'Nhập email và mật khẩu (ít nhất 6 ký tự)');
+      return;
+    }
+    setState(() => busy = true);
+    final err = signUp ? await sync.signUp(email.text, pass.text) : await sync.signIn(email.text, pass.text);
+    if (!mounted) return;
+    setState(() => busy = false);
+    if (err != null) {
+      showToast(context, err);
+    } else {
+      pass.clear();
+      showToast(context, 'Đã đăng nhập – đang đồng bộ dữ liệu…');
+    }
+  }
+
+  Future<void> _config() async {
+    final u = TextEditingController(text: sync.url);
+    final k = TextEditingController(text: sync.anonKey);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Địa chỉ kho dữ liệu'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: u, decoration: const InputDecoration(labelText: 'Project URL', hintText: 'https://xxxx.supabase.co')),
+          const SizedBox(height: 10),
+          TextField(controller: k, maxLines: 3, decoration: const InputDecoration(labelText: 'Anon / Publishable key')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Hủy')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Lưu')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await sync.saveConfig(u.text, k.text);
+    if (mounted) showToast(context, 'Đã lưu. Hãy tắt hẳn app rồi mở lại để kết nối.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<SyncState>(
+      valueListenable: sync.state,
+      builder: (_, st, __) {
+        if (st == SyncState.off && !sync.configured) {
+          return PaperCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text('Chưa kết nối kho dữ liệu đám mây. Dữ liệu hiện chỉ nằm trong máy này.',
+                  style: TextStyle(height: 1.4)),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(onPressed: _config, icon: const Icon(Icons.link), label: const Text('Nhập địa chỉ kho dữ liệu')),
+            ]),
+          );
+        }
+        final u = sync.user;
+        if (u == null) {
+          return PaperCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text('Đăng nhập cùng một tài khoản trên điện thoại và máy tính để 2 bên dùng chung dữ liệu.',
+                  style: TextStyle(height: 1.4)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: email,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.alternate_email)),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: pass,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Mật khẩu (ít nhất 6 ký tự)', prefixIcon: Icon(Icons.lock_outline)),
+                onSubmitted: (_) => _auth(false),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: busy ? null : () => _auth(true),
+                    child: const Text('Tạo tài khoản'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: busy ? null : () => _auth(false),
+                    child: busy
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Đăng nhập'),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              const Text('Lần đầu: bấm "Tạo tài khoản" trên 1 máy. Máy còn lại bấm "Đăng nhập" bằng đúng email đó.',
+                  style: TextStyle(fontSize: 12, color: kMuted, height: 1.4)),
+              if (!sync.builtIn)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(onPressed: _config, child: const Text('Đổi địa chỉ kho')),
+                ),
+            ]),
+          );
+        }
+        final (IconData icon, Color c, String label) = switch (st) {
+          SyncState.syncing => (Icons.cloud_sync, kNavy, 'Đang đồng bộ…'),
+          SyncState.error => (Icons.cloud_off, kRed, 'Chưa đồng bộ được'),
+          _ => (Icons.cloud_done, kGreen, 'Đã đồng bộ'),
+        };
+        return PaperCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Icon(icon, color: c, size: 28),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(label, style: TextStyle(fontWeight: FontWeight.w800, color: c, fontSize: 15)),
+                  ValueListenableBuilder<DateTime?>(
+                    valueListenable: sync.lastSynced,
+                    builder: (_, t, __) => Text(
+                      t == null
+                          ? u.email ?? ''
+                          : '${u.email} · lần cuối ${two(t.hour)}:${two(t.minute)}:${two(t.second)} ${two(t.day)}/${two(t.month)}',
+                      style: const TextStyle(color: kMuted, fontSize: 12.5),
+                    ),
+                  ),
+                ]),
+              ),
+            ]),
+            if (st == SyncState.error)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: ValueListenableBuilder<String>(
+                  valueListenable: sync.message,
+                  builder: (_, m, __) => Text(m, style: const TextStyle(color: kRed, fontSize: 12.5)),
+                ),
+              ),
+            if (pending > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('$pending thay đổi đang chờ gửi lên', style: const TextStyle(color: kAmber, fontSize: 12.5)),
+              ),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: st == SyncState.syncing ? null : () => sync.syncNow(),
+                  icon: const Icon(Icons.sync),
+                  label: const Text('Đồng bộ ngay'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton(
+                onPressed: () async {
+                  final ok = await confirmDialog(context, 'Đăng xuất đồng bộ?',
+                      'Dữ liệu trong máy vẫn giữ nguyên, chỉ ngừng đồng bộ với máy kia.',
+                      ok: 'Đăng xuất', danger: false);
+                  if (ok) await sync.signOut();
+                },
+                child: const Text('Đăng xuất'),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            const Text('Tự đồng bộ mỗi 15 giây và ngay sau mỗi thay đổi. Mất mạng vẫn dùng bình thường.',
+                style: TextStyle(fontSize: 12, color: kMuted)),
+          ]),
+        );
+      },
     );
   }
 }

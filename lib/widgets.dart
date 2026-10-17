@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'db.dart';
@@ -243,6 +247,7 @@ Future<T?> showAppSheet<T>(BuildContext context, Widget child) {
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
+    constraints: const BoxConstraints(maxWidth: 640),
     backgroundColor: kPaper,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
     builder: (ctx) => Padding(
@@ -350,4 +355,24 @@ Future<SchoolClass?> pickClass(BuildContext context, {String title = 'Chọn l�
         ),
     ]),
   );
+}
+
+/// Điện thoại: mở bảng chia sẻ (Zalo, Drive...). Máy tính: hỏi nơi lưu file.
+Future<void> shareOrSave(BuildContext context, File f, String mime, {String? text}) async {
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    final name = f.uri.pathSegments.last;
+    final ext = name.contains('.') ? name.split('.').last : '';
+    final path = await FilePicker.platform.saveFile(
+      dialogTitle: 'Lưu file',
+      fileName: name,
+      type: ext.isEmpty ? FileType.any : FileType.custom,
+      allowedExtensions: ext.isEmpty ? null : [ext],
+    );
+    if (path == null) return;
+    final out = path.toLowerCase().endsWith('.$ext') || ext.isEmpty ? path : '$path.$ext';
+    await f.copy(out);
+    if (context.mounted) showToast(context, 'Đã lưu: $out');
+    return;
+  }
+  await Share.shareXFiles([XFile(f.path, mimeType: mime)], text: text);
 }

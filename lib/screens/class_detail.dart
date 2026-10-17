@@ -80,7 +80,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
     final safe = fold(c.name).replaceAll(RegExp(r'[^a-z0-9]+'), '_');
     final f = File('${dir.path}/BangDiem_${safe}_${todayYmd()}.csv');
     await f.writeAsString(csv);
-    await Share.shareXFiles([XFile(f.path, mimeType: 'text/csv')], subject: 'Bảng điểm ${c.name}');
+    await shareOrSave(context, f, 'text/csv', text: 'Bảng điểm ${c.name}');
   }
 
   Widget? _fab() {

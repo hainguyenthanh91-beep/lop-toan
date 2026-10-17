@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK + Windows
 
 on:
   push:
@@ -47,7 +47,7 @@ jobs:
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
 
       - name: Doi ten file
         run: cp build/app/outputs/flutter-apk/app-release.apk LopToan-v${{ github.run_number }}.apk
@@ -62,5 +62,48 @@ jobs:
         with:
           tag_name: v${{ github.run_number }}
           name: Lớp Toán – bản ${{ github.run_number }}
-          body: Tải file .apk bên dưới về điện thoại rồi bấm để cài.
+          body: |
+            📱 Điện thoại: tải file .apk về rồi bấm để cài.
+            💻 Máy tính Windows: tải file LopToan-Windows-....zip, giải nén, mở LopToan.exe (file Windows được thêm sau vài phút).
           files: LopToan-v${{ github.run_number }}.apk
+
+  windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.29.3'
+          cache: true
+
+      - name: Tao khung Windows
+        shell: bash
+        run: |
+          python -m pip install -q pillow
+          flutter create --platforms=windows --org vn.thayhai --project-name lop_toan .
+          rm -rf test
+          python tools/patch_windows.py
+
+      - name: Build Windows
+        shell: bash
+        run: |
+          flutter pub get
+          flutter build windows --release --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+
+      - name: Dong goi
+        shell: pwsh
+        run: |
+          $src = "build/windows/x64/runner/Release"
+          Rename-Item "$src/lop_toan.exe" "LopToan.exe"
+          New-Item -ItemType Directory -Force -Path "LopToan" | Out-Null
+          Copy-Item -Recurse "$src/*" "LopToan/"
+          Compress-Archive -Path "LopToan" -DestinationPath "LopToan-Windows-v${{ github.run_number }}.zip"
+
+      - name: Dang ban Windows
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          files: LopToan-Windows-v${{ github.run_number }}.zip
