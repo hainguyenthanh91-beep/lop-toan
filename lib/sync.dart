@@ -4,12 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'cloud_config.dart';
 import 'db.dart';
 
 /// Địa chỉ kho dữ liệu đám mây (Supabase). Có thể gắn sẵn lúc build
 /// (--dart-define) hoặc nhập trong Cài đặt.
-const _builtInUrl = String.fromEnvironment('SUPABASE_URL');
-const _builtInKey = String.fromEnvironment('SUPABASE_KEY');
+const _envUrl = String.fromEnvironment('SUPABASE_URL');
+const _envKey = String.fromEnvironment('SUPABASE_KEY');
+const _builtInUrl = _envUrl != '' ? _envUrl : cloudUrl;
+const _builtInKey = _envKey != '' ? _envKey : cloudKey;
 
 enum SyncState { off, signedOut, idle, syncing, error }
 
