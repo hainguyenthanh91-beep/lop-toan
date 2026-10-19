@@ -193,7 +193,7 @@ class SyncService {
     final d = await AppDb.instance.db;
     final uid = user!.id;
     final order = AppDb.syncTables;
-    final pending = await d.query('_outbox');
+    final pending = [...await d.query('_outbox')];
     if (pending.isEmpty) return;
     pending.sort((a, b) {
       final c = order.indexOf(a['tbl'] as String).compareTo(order.indexOf(b['tbl'] as String));
