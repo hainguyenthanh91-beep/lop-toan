@@ -57,6 +57,8 @@ print("Đã cấu hình khóa ký:", gradle.name)
 manifest = app / "src" / "main" / "AndroidManifest.xml"
 m = manifest.read_text(encoding="utf-8")
 m = re.sub(r'android:label="[^"]*"', 'android:label="Lớp Toán"', m, count=1)
+if "android.permission.INTERNET" not in m:
+    m = re.sub(r"(<manifest[^>]*>)", r'\1\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />', m, count=1)
 if "android.intent.action.DIAL" not in m:
     queries = '''
     <queries>

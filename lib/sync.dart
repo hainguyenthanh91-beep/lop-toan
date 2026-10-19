@@ -109,9 +109,10 @@ class SyncService {
       await _c.auth.signInWithPassword(email: email.trim().toLowerCase(), password: password);
       return null;
     } on AuthException catch (e) {
+      if (_isNet(e.message)) return 'Không kết nối được Internet. Kiểm tra wifi/4G rồi thử lại.';
       return _authError(e.message);
     } catch (e) {
-      return 'Lỗi mạng: $e';
+      return _isNet('$e') ? 'Không kết nối được Internet. Kiểm tra wifi/4G rồi thử lại.' : 'Lỗi: $e';
     }
   }
 
@@ -124,11 +125,15 @@ class SyncService {
       }
       return null;
     } on AuthException catch (e) {
+      if (_isNet(e.message)) return 'Không kết nối được Internet. Kiểm tra wifi/4G rồi thử lại.';
       return _authError(e.message);
     } catch (e) {
-      return 'Lỗi mạng: $e';
+      return _isNet('$e') ? 'Không kết nối được Internet. Kiểm tra wifi/4G rồi thử lại.' : 'Lỗi: $e';
     }
   }
+
+  bool _isNet(String m) =>
+      m.contains('SocketException') || m.contains('Failed host lookup') || m.contains('ClientException');
 
   String _authError(String m) {
     final l = m.toLowerCase();
