@@ -1,7 +1,7 @@
 name: lop_toan
 description: "App điểm danh, chấm điểm và theo dõi học sinh – chạy offline trên điện thoại."
 publish_to: 'none'
-version: 2.0.0+6
+version: 2.0.1+7
 
 environment:
   sdk: ">=3.7.0 <4.0.0"

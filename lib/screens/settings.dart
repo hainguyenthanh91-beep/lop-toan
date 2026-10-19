@@ -235,6 +235,7 @@ class _SyncPanelState extends State<SyncPanel> {
   final email = TextEditingController();
   final pass = TextEditingController();
   bool busy = false;
+  bool showPass = false;
   int pending = 0;
 
   @override
@@ -258,8 +259,13 @@ class _SyncPanelState extends State<SyncPanel> {
   }
 
   Future<void> _auth(bool signUp) async {
-    if (email.text.trim().isEmpty || pass.text.length < 6) {
-      showToast(context, 'Nhập email và mật khẩu (ít nhất 6 ký tự)');
+    final e = email.text.trim();
+    if (e.isEmpty || !e.contains('@') || !e.contains('.')) {
+      showToast(context, 'Ô Email chưa đúng (VD: thayhai@gmail.com)');
+      return;
+    }
+    if (pass.text.length < 6) {
+      showToast(context, 'Mật khẩu mới có ${pass.text.length} ký tự – cần ít nhất 6');
       return;
     }
     setState(() => busy = true);
@@ -267,7 +273,14 @@ class _SyncPanelState extends State<SyncPanel> {
     if (!mounted) return;
     setState(() => busy = false);
     if (err != null) {
-      showToast(context, err);
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Chưa đăng nhập được'),
+          content: Text(err),
+          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+        ),
+      );
     } else {
       pass.clear();
       showToast(context, 'Đã đăng nhập – đang đồng bộ dữ liệu…');
@@ -322,13 +335,24 @@ class _SyncPanelState extends State<SyncPanel> {
               TextField(
                 controller: email,
                 keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                textCapitalization: TextCapitalization.none,
                 decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.alternate_email)),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: pass,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Mật khẩu (ít nhất 6 ký tự)', prefixIcon: Icon(Icons.lock_outline)),
+                obscureText: !showPass,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: InputDecoration(
+                  labelText: 'Mật khẩu (ít nhất 6 ký tự)',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    icon: Icon(showPass ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setState(() => showPass = !showPass),
+                  ),
+                ),
                 onSubmitted: (_) => _auth(false),
               ),
               const SizedBox(height: 12),

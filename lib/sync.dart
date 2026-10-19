@@ -106,7 +106,7 @@ class SyncService {
   Future<String?> signIn(String email, String password) async {
     if (!_ready) return 'Chưa cấu hình kho dữ liệu';
     try {
-      await _c.auth.signInWithPassword(email: email.trim(), password: password);
+      await _c.auth.signInWithPassword(email: email.trim().toLowerCase(), password: password);
       return null;
     } on AuthException catch (e) {
       return _authError(e.message);
@@ -118,7 +118,7 @@ class SyncService {
   Future<String?> signUp(String email, String password) async {
     if (!_ready) return 'Chưa cấu hình kho dữ liệu';
     try {
-      final r = await _c.auth.signUp(email: email.trim(), password: password);
+      final r = await _c.auth.signUp(email: email.trim().toLowerCase(), password: password);
       if (r.session == null) {
         return 'Đã tạo tài khoản nhưng cần xác nhận email. Hãy tắt "Confirm email" trong Supabase rồi đăng nhập.';
       }
@@ -134,8 +134,9 @@ class SyncService {
     final l = m.toLowerCase();
     if (l.contains('invalid login')) return 'Sai email hoặc mật khẩu';
     if (l.contains('already registered')) return 'Email này đã có tài khoản – hãy bấm Đăng nhập';
-    if (l.contains('password')) return 'Mật khẩu cần ít nhất 6 ký tự';
-    return m;
+    if (l.contains('at least') && l.contains('password')) return 'Mật khẩu quá ngắn ($m)';
+    if (l.contains('email') && (l.contains('invalid') || l.contains('validate'))) return 'Email không hợp lệ ($m)';
+    return 'Lỗi từ máy chủ: $m';
   }
 
   Future<void> signOut() async {
