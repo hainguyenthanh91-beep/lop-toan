@@ -49,10 +49,10 @@ jobs:
       - name: Kiem tra file Excel mau
         run: dart run tools/xlsx_sample.dart
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: xlsx-sample
-          path: xlsx-sample.xlsx
+      - name: Doc thu file Excel bang openpyxl
+        run: |
+          python3 -m pip install --break-system-packages -q openpyxl || pip install -q openpyxl
+          python3 tools/check_xlsx.py xlsx-sample.xlsx
 
       - name: Build APK
         run: flutter build apk --release --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
