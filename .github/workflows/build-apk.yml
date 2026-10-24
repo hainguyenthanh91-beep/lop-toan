@@ -46,6 +46,14 @@ jobs:
       - name: Cai thu vien
         run: flutter pub get
 
+      - name: Kiem tra file Excel mau
+        run: dart run tools/xlsx_sample.dart
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xlsx-sample
+          path: xlsx-sample.xlsx
+
       - name: Build APK
         run: flutter build apk --release --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../db.dart';
+import '../export_excel.dart';
 import '../utils.dart';
 import '../widgets.dart';
 
@@ -46,6 +47,18 @@ class _FeesScreenState extends State<FeesScreen> with AutoReload<FeesScreen> {
   void _shift(int delta) {
     setState(() => month = DateTime(month.year, month.month + delta, 1));
     reload();
+  }
+
+  Future<void> _export() async {
+    try {
+      showToast(context, 'Đang tạo file Excel…');
+      final bytes = await feesWorkbook(monthKey);
+      final p = monthKey.split('-');
+      final f = await writeExcel(bytes, 'Hoc phi T${int.parse(p[1])}-${p[0]}');
+      if (mounted) await shareOrSave(context, f, xlsxMime, text: 'Học phí ${monthLabel(monthKey)}');
+    } catch (e) {
+      if (mounted) showToast(context, 'Không xuất được Excel: $e');
+    }
   }
 
   BillInfo _bill(Student s) => bills[s.id] ?? BillInfo();
@@ -131,7 +144,13 @@ class _FeesScreenState extends State<FeesScreen> with AutoReload<FeesScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Học phí theo buổi')),
+      appBar: AppBar(title: const Text('Học phí theo buổi'), actions: [
+        IconButton(
+          tooltip: 'Xuất Excel học phí tháng này',
+          onPressed: _export,
+          icon: const Icon(Icons.grid_on),
+        ),
+      ]),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

@@ -1,16 +1,15 @@
-import 'dart:io';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../db.dart';
+import '../export_excel.dart';
 import '../utils.dart';
 import '../widgets.dart';
 import 'attendance.dart';
 import 'classes.dart';
 import 'grading.dart';
+import 'month_grid.dart';
 import 'student.dart';
 import 'student_edit.dart';
 
@@ -75,12 +74,15 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   }
 
   Future<void> _exportCsv(SchoolClass c) async {
-    final csv = await AppDb.instance.classCsv(c.id!);
-    final dir = await getTemporaryDirectory();
-    final safe = fold(c.name).replaceAll(RegExp(r'[^a-z0-9]+'), '_');
-    final f = File('${dir.path}/BangDiem_${safe}_${todayYmd()}.csv');
-    await f.writeAsString(csv);
-    await shareOrSave(context, f, 'text/csv', text: 'Bảng điểm ${c.name}');
+    final month = ym(DateTime.now());
+    try {
+      final bytes = await classWorkbook(c, month);
+      final p = month.split('-');
+      final f = await writeExcel(bytes, 'Lop ${c.name} T${int.parse(p[1])}-${p[0]}');
+      if (mounted) await shareOrSave(context, f, xlsxMime, text: 'Lớp ${c.name} – ${monthLabel(month)}');
+    } catch (e) {
+      if (mounted) showToast(context, 'Không xuất được Excel: $e');
+    }
   }
 
   Widget? _fab() {
@@ -136,7 +138,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
               PopupMenuItem(
                   value: 'import', child: ListTile(leading: Icon(Icons.playlist_add), title: Text('Nhập danh sách HS'))),
               PopupMenuItem(
-                  value: 'csv', child: ListTile(leading: Icon(Icons.table_chart_outlined), title: Text('Xuất bảng điểm (Excel)'))),
+                  value: 'csv', child: ListTile(leading: Icon(Icons.table_chart_outlined), title: Text('Xuất Excel tháng này'))),
               PopupMenuItem(
                   value: 'delete',
                   child: ListTile(leading: Icon(Icons.delete_outline, color: kRed), title: Text('Xóa lớp'))),
@@ -303,7 +305,27 @@ class _SessionsTabState extends State<_SessionsTab> with AutoReload<_SessionsTab
             ),
           ),
         ]),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        PaperCard(
+          color: kNavy,
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => MonthGridScreen(classId: widget.cls.id!))),
+          child: const Row(children: [
+            Icon(Icons.grid_on, color: Colors.white),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Bảng điểm danh tháng',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15.5)),
+                SizedBox(height: 2),
+                Text('Cả lớp cả tháng trên 1 bảng · tích nhanh · xuất Excel',
+                    style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+              ]),
+            ),
+            Icon(Icons.chevron_right, color: Colors.white),
+          ]),
+        ),
+        const SizedBox(height: 6),
         SectionHeader(
           title: 'Các buổi học',
           trailing: TextButton.icon(

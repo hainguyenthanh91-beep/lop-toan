@@ -254,6 +254,14 @@ class AttendanceRecord {
   int get st => status < 0 ? 0 : (status > 3 ? 3 : status);
 }
 
+class MonthGrid {
+  final List<Student> students;
+  final List<String> dates; // các ngày hiện cột (yyyy-MM-dd), đã sắp xếp
+  final Set<String> classDates; // ngày đúng lịch học của lớp
+  final Map<int, Map<String, int>> marks; // studentId -> ngày -> trạng thái
+  MonthGrid(this.students, this.dates, this.classDates, this.marks);
+}
+
 class Fee {
   final int studentId;
   final String month;
@@ -622,6 +630,70 @@ class AppDb {
           : await txn.insert('sessions', {'id': newId(), 'class_id': classId, 'date': date, 'note': ''});
       await txn.insert('attendance', {'session_id': sid, 'student_id': studentId, 'status': status, 'note': ''},
           conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+    notifyDataChanged();
+  }
+
+  /// Dữ liệu cho bảng điểm danh tháng của 1 lớp.
+  Future<MonthGrid> classMonthGrid(SchoolClass c, String month) async {
+    final d = await db;
+    final rows = await d.rawQuery(
+        'SELECT a.student_id, se.date, a.status FROM attendance a JOIN sessions se ON se.id = a.session_id '
+        'WHERE se.class_id = ? AND se.date LIKE ?',
+        [c.id, '$month-%']);
+    final marks = <int, Map<String, int>>{};
+    final dates = <String>{};
+    for (final r in rows) {
+      final date = _s(r['date']);
+      final st = _i(r['status']).clamp(0, 3).toInt();
+      marks.putIfAbsent(_i(r['student_id']), () => {})[date] = st;
+      dates.add(date);
+    }
+    final first = parseYmd('$month-01');
+    final days = DateTime(first.year, first.month + 1, 0).day;
+    final classDates = <String>{};
+    for (var i = 1; i <= days; i++) {
+      final day = DateTime(first.year, first.month, i);
+      if (c.days.contains(day.weekday)) classDates.add(ymd(day));
+    }
+    final all = await getStudents(classId: c.id, includeInactive: true);
+    final students = all.where((s) => s.active || marks.containsKey(s.id)).toList();
+    return MonthGrid(students, ({...dates, ...classDates}.toList()..sort()), classDates, marks);
+  }
+
+  /// Ghi nhiều ô điểm danh 1 lúc (status = null để xoá). Buổi trống tự xoá.
+  Future<void> setDays(int classId, List<(int, String, int?)> changes) async {
+    if (changes.isEmpty) return;
+    final d = await db;
+    await d.transaction((txn) async {
+      final sids = <String, int?>{};
+      Future<int?> sid(String date, bool create) async {
+        if (sids[date] != null) return sids[date];
+        final ex = await txn.query('sessions', columns: ['id'], where: 'class_id = ? AND date = ?', whereArgs: [classId, date]);
+        if (ex.isNotEmpty) return sids[date] = _i(ex.first['id']);
+        if (!create) return null;
+        return sids[date] = await txn.insert('sessions', {'id': newId(), 'class_id': classId, 'date': date, 'note': ''});
+      }
+
+      final touched = <String>{};
+      for (final (studentId, date, status) in changes) {
+        touched.add(date);
+        final id = await sid(date, status != null);
+        if (id == null) continue;
+        if (status == null) {
+          await txn.delete('attendance', where: 'session_id = ? AND student_id = ?', whereArgs: [id, studentId]);
+        } else {
+          await txn.insert('attendance', {'session_id': id, 'student_id': studentId, 'status': status, 'note': ''},
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+      for (final date in touched) {
+        final id = sids[date];
+        if (id == null) continue;
+        final left =
+            Sqflite.firstIntValue(await txn.rawQuery('SELECT COUNT(*) FROM attendance WHERE session_id = ?', [id])) ?? 0;
+        if (left == 0) await txn.delete('sessions', where: 'id = ?', whereArgs: [id]);
+      }
     });
     notifyDataChanged();
   }
